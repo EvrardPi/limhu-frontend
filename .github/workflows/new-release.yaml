@@ -1,0 +1,74 @@
+name: Create a new release branch
+on:
+  workflow_dispatch:
+
+jobs:
+  prerelease:
+    name: "Prepare release branch"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name : "Checkout Action"
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: develop
+
+      - name: 🕹️ Git Version
+        id: version
+        uses: codacy/git-version@2.8.0
+        with:
+          minor-identifier: 'feat:'
+          release-branch: develop
+
+      - name: Version without patch
+        id: version2
+        run: |
+          VERSION=$(echo "${{ steps.version.outputs.version }}" | cut -d'.' -f1,2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "branch=release/$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Last commit sha
+        id: sha
+        run: |
+         echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Create release branch
+        uses: peterjgrainger/action-create-branch@v2.4.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          branch: ${{ steps.version2.outputs.branch }}
+          sha: ${{ steps.sha.outputs.sha }}
+
+      - name : "Checkout Action"
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.version2.outputs.branch }}
+
+      - name: Release Drafter
+        uses: release-drafter/release-drafter@v5.20.0
+        with:
+          name: ${{ steps.version2.outputs.version }}
+          tag: ${{ steps.version2.outputs.version }}
+          version: ${{ steps.version2.outputs.version }}
+          publish: true
+          prerelease: true
+          commitish: ${{ steps.version2.outputs.branch }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Repository Dispatch
+        uses: peter-evans/repository-dispatch@v2
+        with:
+          event-type: newrelease
+          client-payload: '{"version": "${{ steps.version2.outputs.version }}"}'
+
+      # - name: Create Pull Request
+      #   uses: peter-evans/create-pull-request@v4
+      #   with:
+      #     base: ${{ steps.version2.outputs.branch }}
+      #     branch: master
+      #     title: ${{ steps.version2.outputs.branch }}
+      #     body: ""
